@@ -1,9 +1,18 @@
 import streamlit as st
+import os
 from components.dashboard import render_dashboard
 from components.competitor_pipeline import render_competitor_pipeline
 from components.news_monitor import render_news_monitor
 from components.kol_insights import render_kol_insights
 from utils.database import init_db, seed_database
+
+# Set page configuration (must be first Streamlit command)
+st.set_page_config(
+    page_title="Pharma CI Platform",
+    page_icon="💊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # Initialize the database on app startup
 try:
@@ -12,14 +21,6 @@ try:
 except Exception as e:
     st.error(f"Error initializing database: {e}")
     print(f"Error initializing database: {e}")
-
-# Set page configuration
-st.set_page_config(
-    page_title="Pharma CI Platform",
-    page_icon="💊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 # Add sidebar for navigation
 st.sidebar.title("Pharma CI Platform")
@@ -32,14 +33,18 @@ page = st.sidebar.radio(
 )
 
 # Display the appropriate page based on selection
-if page == "Dashboard":
-    render_dashboard()
-elif page == "Competitor Pipeline":
-    render_competitor_pipeline()
-elif page == "News Monitor":
-    render_news_monitor()
-elif page == "KOL Insights":
-    render_kol_insights()
+try:
+    if page == "Dashboard":
+        render_dashboard()
+    elif page == "Competitor Pipeline":
+        render_competitor_pipeline()
+    elif page == "News Monitor":
+        render_news_monitor()
+    elif page == "KOL Insights":
+        render_kol_insights()
+except Exception as e:
+    st.error(f"Error loading page: {e}")
+    print(f"Error loading page: {e}")
 
 # Footer with attribution
 st.sidebar.markdown("---")
