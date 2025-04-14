@@ -8,50 +8,60 @@ import plotly.graph_objects as go
 import streamlit as st
 
 def create_pipeline_phase_chart(pipeline_data):
-    """
-    Create a bar chart showing drug count by development phase.
+    """Create a bar chart showing the distribution of drugs by phase"""
+    try:
+        # Define expected phases
+        expected_phases = ['Preclinical', 'Phase 1', 'Phase 2', 'Phase 3', 'Approved']
+        
+        # Initialize phase counts with zeros
+        phase_counts = {phase: 0 for phase in expected_phases}
+        
+        # Handle empty or invalid data
+        if pipeline_data is None or not isinstance(pipeline_data, pd.DataFrame) or pipeline_data.empty:
+            print("Creating empty chart due to invalid data")
+            return create_empty_chart(expected_phases)
+        
+        # Ensure phase column exists
+        if 'phase' not in pipeline_data.columns:
+            print("No phase column found")
+            return create_empty_chart(expected_phases)
+        
+        # Count phases manually, excluding placeholder rows
+        for _, row in pipeline_data.iterrows():
+            phase = row['phase']
+            if phase in phase_counts and not row['name'].startswith('placeholder_'):
+                phase_counts[phase] += 1
+        
+        # Create the bar chart using the counts dictionary
+        fig = px.bar(
+            x=list(phase_counts.keys()),
+            y=list(phase_counts.values()),
+            title='Pipeline by Phase',
+            labels={'x': 'Phase', 'y': 'Number of Drugs'}
+        )
+        
+        # Update layout
+        fig.update_layout(
+            showlegend=False,
+            xaxis_title='Phase',
+            yaxis_title='Number of Drugs',
+            plot_bgcolor='white'
+        )
+        
+        return fig
+        
+    except Exception as e:
+        print(f"Error creating phase chart: {str(e)}")
+        return create_empty_chart(expected_phases)
 
-    Args:
-        pipeline_data (pd.DataFrame): DataFrame with pipeline data
-
-    Returns:
-        plotly.graph_objects.Figure: Plotly figure object
-    """
-    if pipeline_data.empty:
-        return go.Figure()
-
-    # Count drugs by phase
-    phase_counts = pipeline_data['phase'].value_counts().reset_index()
-    phase_counts.columns = ['Phase', 'Count']
-
-    # Define phase order
-    phase_order = ['Preclinical', 'Phase 1', 'Phase 1/2', 'Phase 2', 'Phase 2/3', 'Phase 3', 'Phase 4', 'Approved']
-
-    # Filter and order phases
-    phase_counts = phase_counts[phase_counts['Phase'].isin(phase_order)]
-    phase_counts['Phase'] = pd.Categorical(phase_counts['Phase'], categories=phase_order, ordered=True)
-    phase_counts = phase_counts.sort_values('Phase')
-
-    # Create the figure
-    fig = px.bar(
-        phase_counts, 
-        x='Phase', 
-        y='Count',
-        color='Phase',
-        title='Drug Pipeline by Phase',
-        labels={'Count': 'Number of Drugs', 'Phase': 'Development Phase'},
-        color_discrete_sequence=px.colors.qualitative.G10
+def create_empty_chart(phases):
+    """Helper function to create an empty chart"""
+    return px.bar(
+        x=phases,
+        y=[0] * len(phases),
+        title='Pipeline by Phase',
+        labels={'x': 'Phase', 'y': 'Number of Drugs'}
     )
-
-    # Update layout
-    fig.update_layout(
-        xaxis={'categoryorder': 'array', 'categoryarray': phase_order},
-        hovermode='closest',
-        height=400,
-        margin=dict(l=20, r=20, t=40, b=20)
-    )
-
-    return fig
 
 def create_company_comparison_chart(pipeline_data, top_n=5):
     """
