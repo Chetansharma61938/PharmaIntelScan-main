@@ -74,16 +74,15 @@ def get_pipeline_data(company_names=None, refresh=False):
     Returns:
         pd.DataFrame: DataFrame containing pipeline data
     """
-    pipeline_data = []
-    
     try:
-        # First try to get data from external APIs
+        # Get data from all sources
         all_data = aggregate_data(company_names=company_names, refresh=refresh)
         
-        # Extract clinical trials data and convert to DataFrame
-        clinical_trials = all_data.get("clinical_trials", [])
+        # Process and combine the data
+        pipeline_data = []
         
         # Process clinical trials data
+        clinical_trials = all_data.get("clinical_trials", [])
         for trial in clinical_trials:
             if not trial:
                 continue
@@ -100,7 +99,7 @@ def get_pipeline_data(company_names=None, refresh=False):
             }
             pipeline_data.append(pipeline_entry)
         
-        # Add FDA approval data
+        # Process FDA approval data
         for approval in all_data.get("fda", []):
             if not approval:
                 continue
@@ -116,97 +115,88 @@ def get_pipeline_data(company_names=None, refresh=False):
                 "source": "FDA"
             }
             pipeline_data.append(pipeline_entry)
-    except Exception as e:
-        print(f"Error fetching data from external APIs: {e}")
-    
-    # If no data from external APIs or if there was an error, use database as fallback
-    if not pipeline_data:
-        print("Using database as fallback for pipeline data")
-        # Get data from the database
-        db = get_db()
         
-        try:
-            # Build query based on company_names filter
-            query = db.query(Drug).join(Company)
-            
-            if company_names:
-                # Filter by company names
-                query = query.filter(Company.name.in_(company_names))
+        # If no data from external APIs, use database as fallback
+        if not pipeline_data:
+            print("Using database as fallback for pipeline data")
+            try:
+                db = get_db()
+                query = db.query(Drug).join(Company)
                 
-            # Execute query and get results
-            drug_records = query.all()
+                if company_names:
+                    query = query.filter(Company.name.in_(company_names))
+                    
+                drug_records = query.all()
+                
+                for drug in drug_records:
+                    pipeline_entry = {
+                        "drug_name": drug.name,
+                        "company": drug.company.name,
+                        "phase": drug.phase,
+                        "condition": drug.condition,
+                        "status": drug.status,
+                        "last_updated": drug.last_updated.strftime('%Y-%m-%d') if drug.last_updated else "Unknown",
+                        "url": drug.url or "#",
+                        "source": "Database",
+                        "therapeutic_area": drug.therapeutic_area
+                    }
+                    pipeline_data.append(pipeline_entry)
+            except Exception as e:
+                print(f"Error getting pipeline data from database: {e}")
+            finally:
+                if 'db' in locals():
+                    db.close()
+        
+        # Convert to DataFrame (create empty one if no data)
+        pipeline_df = pd.DataFrame(pipeline_data) if pipeline_data else pd.DataFrame(columns=[
+            'drug_name', 'company', 'phase', 'condition', 'status', 
+            'last_updated', 'url', 'source', 'therapeutic_area'
+        ])
+        
+        # Clean up and standardize phases and add missing therapeutic areas
+        if not pipeline_df.empty:
+            # Add therapeutic area if missing
+            if 'therapeutic_area' not in pipeline_df.columns:
+                pipeline_df['therapeutic_area'] = 'Other'
             
-            # Format results for pipeline data
-            for drug in drug_records:
-                pipeline_entry = {
-                    "drug_name": drug.name,
-                    "company": drug.company.name,
-                    "phase": drug.phase,
-                    "condition": drug.condition,
-                    "status": drug.status,
-                    "last_updated": drug.last_updated.strftime('%Y-%m-%d') if drug.last_updated else "Unknown",
-                    "url": drug.url or "#",
-                    "source": "Database",
-                    "therapeutic_area": drug.therapeutic_area
-                }
-                pipeline_data.append(pipeline_entry)
-        except Exception as e:
-            print(f"Error getting pipeline data from database: {e}")
-            # Return empty DataFrame if both external APIs and database fail
-            return pd.DataFrame()
-        finally:
-            db.close()
-    
-    # Convert to DataFrame
-    pipeline_df = pd.DataFrame(pipeline_data)
-    
-    # Clean up and standardize phases and add missing therapeutic areas
-    if not pipeline_df.empty:
-        # Add therapeutic area if missing
-        if 'therapeutic_area' not in pipeline_df.columns:
-            pipeline_df['therapeutic_area'] = 'Other'
-        else:
-            # Fill NaN values with 'Other'
-            pipeline_df['therapeutic_area'] = pipeline_df['therapeutic_area'].fillna('Other')
+            # Fill NaN values
+            pipeline_df = pipeline_df.fillna({
+                'therapeutic_area': 'Other',
+                'phase': 'Unknown',
+                'condition': 'Unknown',
+                'status': 'Unknown',
+                'last_updated': 'Unknown',
+                'url': '#'
+            })
             
-        # Map therapeutic areas based on conditions for external API data
-        # Only process rows where therapeutic_area is 'Other' or NaN
-        def categorize_condition(condition):
-            condition = str(condition).lower()
-            if any(term in condition for term in ['cancer', 'tumor', 'neoplasm', 'carcinoma', 'lymphoma', 'leukemia', 'melanoma']):
-                return 'Oncology'
-            elif any(term in condition for term in ['heart', 'cardio', 'vascular', 'stroke', 'hypertension', 'atherosclerosis']):
-                return 'Cardiovascular'
-            elif any(term in condition for term in ['brain', 'neuro', 'alzheimer', 'parkinson', 'multiple sclerosis', 'epilepsy']):
-                return 'Neurology'
-            elif any(term in condition for term in ['immune', 'arthritis', 'lupus', 'inflammatory', 'crohn', 'psoriasis']):
-                return 'Immunology'
-            elif any(term in condition for term in ['diabetes', 'obesity', 'metabolic']):
-                return 'Metabolic'
-            elif any(term in condition for term in ['lung', 'respiratory', 'copd', 'asthma', 'bronchitis']):
-                return 'Respiratory'
-            elif any(term in condition for term in ['infect', 'viral', 'bacterial', 'virus', 'covid', 'hiv', 'hepatitis']):
-                return 'Infectious Disease'
-            else:
-                return 'Other'
+            # Map phase text to standardized values
+            phase_map = {
+                "Preclinical": "Preclinical",
+                "Phase 1": "Phase 1",
+                "Phase 2": "Phase 2", 
+                "Phase 3": "Phase 3",
+                "Phase 4": "Phase 4",
+                "Phase 1/Phase 2": "Phase 1/2",
+                "Phase 2/Phase 3": "Phase 2/3",
+                "Phase 1/2": "Phase 1/2",
+                "Phase 2/3": "Phase 2/3",
+                "Early Phase 1": "Phase 1",
+                "N/A": "Preclinical",
+                "Unknown": "Unknown",
+                "Approved": "Approved"
+            }
+            
+            # Apply phase mapping with default to "Unknown"
+            pipeline_df['phase'] = pipeline_df['phase'].apply(
+                lambda x: phase_map.get(str(x).strip(), "Unknown")
+            )
         
-        # Apply categorization only to rows that have therapeutic area as 'Other'
-        mask = (pipeline_df['therapeutic_area'] == 'Other') | (pipeline_df['therapeutic_area'].isna())
-        pipeline_df.loc[mask, 'therapeutic_area'] = pipeline_df.loc[mask, 'condition'].apply(categorize_condition)
-        
-        # Map phase text to standardized values
-        phase_map = {
-            "Phase 1": "Phase 1",
-            "Phase 2": "Phase 2", 
-            "Phase 3": "Phase 3",
-            "Phase 4": "Phase 4",
-            "Phase 1/Phase 2": "Phase 1/2",
-            "Phase 2/Phase 3": "Phase 2/3",
-            "Early Phase 1": "Phase 1",
-            "N/A": "Unknown",
-            "": "Unknown"
-        }
-        
-        pipeline_df['phase'] = pipeline_df['phase'].map(lambda x: phase_map.get(x, x))
-        
-    return pipeline_df
+        return pipeline_df
+    
+    except Exception as e:
+        print(f"Error in get_pipeline_data: {e}")
+        # Return empty DataFrame with expected columns
+        return pd.DataFrame(columns=[
+            'drug_name', 'company', 'phase', 'condition', 'status', 
+            'last_updated', 'url', 'source', 'therapeutic_area'
+        ])

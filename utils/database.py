@@ -8,14 +8,21 @@ from sqlalchemy import create_engine, Column, Integer, String, Text, Float, Date
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 import datetime
+from urllib.parse import urlparse
 
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(override=True)
 
-# Get the database URL from environment variable
-DATABASE_URL = os.getenv('DATABASE_URL')
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set. Please check your .env file.")
+# Get the database URL from environment variable or use a default SQLite URL
+DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///./pharmaintel.db')
+
+# Ensure we're using the correct credentials
+if 'postgresql://' in DATABASE_URL:
+    # Parse the URL to ensure we're using the correct username
+    url = urlparse(DATABASE_URL)
+    if url.username == 'user':
+        # Replace with correct username
+        DATABASE_URL = DATABASE_URL.replace('user:', 'pharma_user:')
 
 # Create the SQLAlchemy engine
 engine = create_engine(DATABASE_URL)
@@ -256,8 +263,8 @@ def seed_sample_drugs():
             "name": "NVS-2190",
             "company_id": company_map.get("Novartis"),
             "phase": "Phase 3",
-            "condition": "Alzheimer's disease",
-            "therapeutic_area": "Neurology",
+            "condition": "Severe asthma",
+            "therapeutic_area": "Respiratory",
             "status": "Recruiting",
             "last_updated": datetime.datetime.utcnow(),
             "url": "#"
@@ -333,32 +340,22 @@ def seed_sample_drugs():
         
         # Preclinical drugs
         {
-            "name": "PFE-4501",
-            "company_id": company_map.get("Pfizer"),
+            "name": "LLY-5432",
+            "company_id": company_map.get("Eli Lilly"),
             "phase": "Preclinical",
-            "condition": "Parkinson's disease",
-            "therapeutic_area": "Neurology",
-            "status": "In vitro studies",
+            "condition": "Type 2 diabetes",
+            "therapeutic_area": "Metabolic",
+            "status": "IND-enabling studies",
             "last_updated": datetime.datetime.utcnow(),
             "url": "#"
         },
         {
-            "name": "MRK-8901",
-            "company_id": company_map.get("Merck"),
+            "name": "GILD-8910",
+            "company_id": company_map.get("Gilead"),
             "phase": "Preclinical",
-            "condition": "Lung cancer",
-            "therapeutic_area": "Oncology",
-            "status": "Animal studies",
-            "last_updated": datetime.datetime.utcnow(),
-            "url": "#"
-        },
-        {
-            "name": "NVS-3200",
-            "company_id": company_map.get("Novartis"),
-            "phase": "Preclinical",
-            "condition": "Rare genetic disorder",
-            "therapeutic_area": "Genetic",
-            "status": "In vitro studies",
+            "condition": "Hepatitis B",
+            "therapeutic_area": "Infectious Disease",
+            "status": "Lead optimization",
             "last_updated": datetime.datetime.utcnow(),
             "url": "#"
         }

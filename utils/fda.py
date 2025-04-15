@@ -71,7 +71,7 @@ def get_fda_data(company_names=None, drug_names=None, max_results=50, refresh=Fa
     
     try:
         # FDA drug approvals API endpoint
-        base_url = "https://api.fda.gov/drug/drugsfda.json"
+        base_url = "https://api.fda.gov/drugs/drugsfda.json"
         
         response = requests.get(base_url, params=params)
         response.raise_for_status()

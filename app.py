@@ -1,3 +1,4 @@
+
 import streamlit as st
 from components.dashboard import render_dashboard
 from components.competitor_pipeline import render_competitor_pipeline
@@ -5,21 +6,21 @@ from components.news_monitor import render_news_monitor
 from components.kol_insights import render_kol_insights
 from utils.database import init_db, seed_database
 
-# Initialize the database on app startup
-try:
-    init_db()
-    seed_database()
-except Exception as e:
-    st.error(f"Error initializing database: {e}")
-    print(f"Error initializing database: {e}")
-
-# Set page configuration
+# Set page configuration first
 st.set_page_config(
     page_title="Pharma CI Platform",
     page_icon="💊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Initialize the database after page config
+try:
+    init_db()
+    seed_database()
+except Exception as e:
+    st.error(f"Error initializing database: {e}")
+    print(f"Error initializing database: {e}")
 
 # Add sidebar for navigation
 st.sidebar.title("Pharma CI Platform")

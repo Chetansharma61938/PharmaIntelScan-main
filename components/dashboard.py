@@ -14,6 +14,17 @@ from utils.visualization import (
     create_recent_activity_timeline
 )
 
+def get_sentiment_label(sentiment_value):
+    """Convert numeric sentiment to text label"""
+    if isinstance(sentiment_value, (int, float)):
+        if sentiment_value > 0.3:
+            return "positive"
+        elif sentiment_value < -0.3:
+            return "negative"
+        else:
+            return "neutral"
+    return "neutral"
+
 def render_dashboard():
     """Render the main dashboard with overview panels and visualizations"""
     st.title("Pharmaceutical CI Dashboard")
@@ -47,8 +58,7 @@ def render_dashboard():
         # Get news data
         news_data = get_news_articles(
             company_names=selected_companies if selected_companies else None,
-            max_results=10,
-            refresh=refresh_data
+            max_results=10
         )
     
     # Overview metrics
@@ -119,8 +129,32 @@ def render_dashboard():
         st.plotly_chart(sentiment_chart, use_container_width=True, key="dashboard_sentiment_chart")
     
     with activity_col:
-        # Recent activity timeline
-        activity_chart = create_recent_activity_timeline(pipeline_data, news_data)
+        # Combine pipeline and news data into activities
+        activities = []
+        
+        # Add pipeline activities
+        if not pipeline_data.empty:
+            for _, row in pipeline_data.iterrows():
+                activities.append({
+                    'date': row.get('last_updated', 'Unknown'),
+                    'type': 'Trial',
+                    'description': f"{row.get('drug_name', 'Unknown')} - {row.get('phase', 'Unknown')} {row.get('status', '')}"
+                })
+        
+        # Add news activities
+        if news_data:
+            for article in news_data:
+                activities.append({
+                    'date': article.get('date', 'Unknown'),
+                    'type': 'News',
+                    'description': article.get('title', 'Unknown')
+                })
+        
+        # Sort activities by date
+        activities.sort(key=lambda x: x['date'], reverse=True)
+        
+        # Create recent activity timeline
+        activity_chart = create_recent_activity_timeline(activities)
         st.plotly_chart(activity_chart, use_container_width=True, key="dashboard_activity_chart")
     
     # Latest industry news
@@ -130,7 +164,7 @@ def render_dashboard():
         for article in news_data[:5]:
             with st.expander(f"{article['title']} ({article['source']})"):
                 st.write(f"**Published:** {article.get('published_at', 'Unknown date')}")
-                st.write(f"**Sentiment:** {article.get('sentiment', 'neutral').capitalize()}")
+                st.write(f"**Sentiment:** {get_sentiment_label(article.get('sentiment', 0)).capitalize()}")
                 st.write(f"**Summary:** {article.get('summary', 'No summary available')}")
                 st.write(f"[Read full article]({article.get('url', '#')})")
     else:

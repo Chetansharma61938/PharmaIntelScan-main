@@ -69,7 +69,7 @@ def get_clinical_trials_data(company_names=None, drug_names=None, max_results=50
                 pass
     
     # Fetch data from ClinicalTrials.gov API
-    base_url = "https://clinicaltrials.gov/api/query/study_fields"
+    base_url = "https://classic.clinicaltrials.gov/api/query/study_fields"
     
     # Specify fields to retrieve
     fields = [

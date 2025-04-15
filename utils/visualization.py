@@ -23,15 +23,37 @@ def create_pipeline_phase_chart(pipeline_data):
     # Define phase order
     phase_order = ['Preclinical', 'Phase 1', 'Phase 1/2', 'Phase 2', 'Phase 2/3', 'Phase 3', 'Phase 4', 'Approved']
 
+    # Standardize phase values
+    phase_map = {
+        "Preclinical": "Preclinical",
+        "Phase 1": "Phase 1",
+        "Phase 2": "Phase 2", 
+        "Phase 3": "Phase 3",
+        "Phase 4": "Phase 4",
+        "Phase 1/Phase 2": "Phase 1/2",
+        "Phase 2/Phase 3": "Phase 2/3",
+        "Phase 1/2": "Phase 1/2",
+        "Phase 2/3": "Phase 2/3",
+        "Early Phase 1": "Phase 1",
+        "N/A": "Preclinical",
+        "Unknown": "Unknown",
+        "Approved": "Approved"
+    }
+
+    # Apply phase mapping
+    pipeline_data['phase'] = pipeline_data['phase'].map(lambda x: phase_map.get(str(x), "Unknown"))
+
     # Count drugs by phase
     phase_counts = pipeline_data['phase'].value_counts().reset_index()
     phase_counts.columns = ['Phase', 'Count']
 
-    # Create a DataFrame with all phases, even if they have zero count
-    all_phases = pd.DataFrame({'Phase': phase_order})
-    phase_counts = pd.merge(all_phases, phase_counts, on='Phase', how='left').fillna(0)
+    # Ensure all phases are present in the data
+    for phase in phase_order:
+        if phase not in phase_counts['Phase'].values:
+            phase_counts = pd.concat([phase_counts, pd.DataFrame({'Phase': [phase], 'Count': [0]})], ignore_index=True)
 
-    # Convert Phase to categorical with the defined order
+    # Filter and order phases
+    phase_counts = phase_counts[phase_counts['Phase'].isin(phase_order)]
     phase_counts['Phase'] = pd.Categorical(phase_counts['Phase'], categories=phase_order, ordered=True)
     phase_counts = phase_counts.sort_values('Phase')
 
@@ -211,181 +233,82 @@ def create_sentiment_chart(news_data):
 
     return fig
 
-def create_recent_activity_timeline(pipeline_data, news_data, max_items=10):
+def create_recent_activity_timeline(activities):
     """
-    Create a combined timeline of recent pipeline and news activity with enhanced UI.
-
+    Create a timeline visualization of recent activities.
+    
     Args:
-        pipeline_data (pd.DataFrame): DataFrame with pipeline data
-        news_data (list): List of news article dictionaries
-        max_items (int): Maximum number of items to display
-
+        activities (list): List of activity dictionaries with 'date', 'type', and 'description'
+        
     Returns:
-        plotly.graph_objects.Figure: Plotly figure object with improved styling
+        plotly.graph_objects.Figure: Plotly figure object
     """
-    from datetime import datetime
-
-    # Create a combined list of events
-    events = []
-    current_date = datetime.now().strftime('%Y-%m-%d')
-
-    # Add pipeline events
-    if not pipeline_data.empty:
-        try:
-            # Get the most recent updates
-            recent_pipeline = pipeline_data.head(max_items)
-
-            for _, row in recent_pipeline.iterrows():
-                # Handle any date format issues
-                date_str = current_date  # Use current date as default
-                try:
-                    if isinstance(row['last_updated'], str):
-                        date_str = row['last_updated']
-                    elif hasattr(row['last_updated'], 'strftime'):
-                        date_str = row['last_updated'].strftime('%Y-%m-%d')
-                except:
-                    pass  # Keep default date
-
-                events.append({
-                    'date': date_str,
-                    'title': f"{row['drug_name']} - {row['phase']}",
-                    'description': f"{row['company']}: {row['condition']}",
-                    'type': 'pipeline'
-                })
-        except Exception as e:
-            print(f"Error processing pipeline data for timeline: {e}")
-
-    # Add news events
-    if news_data:
-        try:
-            for article in news_data[:max_items]:
-                # Handle any date format issues
-                date_str = current_date  # Use current date as default
-                try:
-                    pub_date = article.get('published_at', '')
-                    if isinstance(pub_date, str):
-                        date_str = pub_date
-                    elif hasattr(pub_date, 'strftime'):
-                        date_str = pub_date.strftime('%Y-%m-%d')
-                except:
-                    pass  # Keep default date
-
-                events.append({
-                    'date': date_str,
-                    'title': article.get('title', 'News Update'),
-                    'description': article.get('source', ''),
-                    'type': 'news'
-                })
-        except Exception as e:
-            print(f"Error processing news data for timeline: {e}")
-
-    # If we have no events, add a placeholder to avoid empty chart
-    if not events:
-        events.append({
-            'date': current_date,
-            'title': 'No recent activity',
-            'description': 'Check back later for updates',
-            'type': 'news'
-        })
-
-    # Sort by date and take most recent - with error handling
-    try:
-        events = sorted(events, key=lambda x: x['date'], reverse=True)[:max_items]
-    except Exception as e:
-        print(f"Error sorting timeline events: {e}")
-        # Just take the first max_items without sorting
-        events = events[:max_items]
-
-    # Create the figure with improved styling
+    if not activities:
+        return go.Figure()
+    
+    # Convert activities to DataFrame
+    df = pd.DataFrame(activities)
+    
+    # Create the timeline
     fig = go.Figure()
-
-    # Create custom timeline layout with enhanced visuals
-    for i, event in enumerate(events):
-        # Add vertical line for timeline
-        if i > 0:
-            fig.add_shape(
-                type="line",
-                x0=0, x1=0,
-                y0=i-1, y1=i,
-                line=dict(color="#d1d8e0", width=4),
-            )
-
-        # Add event marker with improved visibility
-        marker_color = '#4b7bec' if event['type'] == 'news' else '#fc5c65'
+    
+    # Define colors for different activity types
+    colors = {
+        'Trial': '#3498DB',  # Blue
+        'News': '#2ECC71'    # Green
+    }
+    
+    # Add traces for each activity
+    for idx, activity in enumerate(activities):
         fig.add_trace(go.Scatter(
-            x=[0],
-            y=[i],
+            x=[activity['date']],
+            y=[idx],  # Use index for vertical position
             mode='markers',
             marker=dict(
-                size=16,
-                color=marker_color,
-                symbol='circle',
-                line=dict(color='white', width=2),
-                opacity=1
+                size=12,
+                color=colors.get(activity['type'], '#95A5A6'),
+                symbol='circle'
             ),
+            name=activity['type'],
             showlegend=False,
             hoverinfo='text',
-            hovertext=f"{event['date']}: {event['title']}"
+            hovertext=f"{activity['type']}: {activity['description']}"
         ))
-
-        # Add date with improved spacing
-        fig.add_trace(go.Scatter(
-            x=[-0.2],
-            y=[i],
-            mode='text',
-            text=[f"<b>{event['date']}</b>"],
-            textposition='middle right',
-            textfont=dict(size=12, color='#2d3436', family='Arial'),
-            showlegend=False
-        ))
-
-        # Add event details with clearer hierarchy
-        fig.add_trace(go.Scatter(
-            x=[0.2],
-            y=[i],
-            mode='text',
-            text=[f"<b style='font-size:13px'>{event['title']}</b><br><span style='color:#636e72;font-size:12px'>{event['description']}</span>"],
-            textposition='middle left',
-            textfont=dict(size=12, family='Arial'),
-            showlegend=False
-        ))
-
-    # Update layout with improved spacing and dimensions
+        
+        # Add text annotation for each activity
+        fig.add_annotation(
+            x=activity['date'],
+            y=idx,
+            text=f"<b>{activity['type']}</b>: {activity['description']}",
+            showarrow=False,
+            xanchor='left',
+            xshift=10,
+            align='left',
+            font=dict(size=11),
+            bgcolor='rgba(255, 255, 255, 0.8)',
+            bordercolor=colors.get(activity['type'], '#95A5A6'),
+            borderwidth=1,
+            borderpad=4
+        )
+    
+    # Update layout
     fig.update_layout(
-        title=dict(
-            text='Recent Activity Timeline',
-            font=dict(size=20, family='Arial', color='#2d3436'),
-            x=0.02,
-            y=0.98
+        title='Recent Activity Timeline',
+        showlegend=False,
+        xaxis=dict(
+            title='Date',
+            showgrid=True,
+            gridcolor='rgba(0,0,0,0.1)'
         ),
-        height=400,  # Fixed height to enable scrolling
-        margin=dict(l=120, r=120, t=40, b=20),
-        xaxis=dict(visible=False, range=[-0.5, 1.5], fixedrange=True),
         yaxis=dict(
-            visible=False, 
-            range=[-0.5, len(events) - 0.5],
-            scaleanchor="x",
-            scaleratio=1,
-            fixedrange=True
+            showticklabels=False,
+            showgrid=False,
+            zeroline=False
         ),
         plot_bgcolor='white',
-        paper_bgcolor='white',
-        showlegend=False,
-        hoverlabel=dict(
-            bgcolor='white',
-            font_size=12,
-            font_family='Arial'
-        ),
-        hovermode='closest',
-        # Enable zooming
-        dragmode='zoom',
-        # Configure modebar
-        modebar=dict(
-            bgcolor='rgba(255, 255, 255, 0.7)',
-            color='#333',
-            activecolor='#000',
-            orientation='v'
-        )
+        height=max(300, len(activities) * 50),  # Dynamic height based on number of activities
+        margin=dict(l=20, r=20, t=40, b=20),
+        hovermode='closest'
     )
-
+    
     return fig
