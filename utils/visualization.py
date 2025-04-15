@@ -20,37 +20,12 @@ def create_pipeline_phase_chart(pipeline_data):
     if pipeline_data.empty:
         return go.Figure()
 
-    # Define phase order
-    phase_order = ['Preclinical', 'Phase 1', 'Phase 1/2', 'Phase 2', 'Phase 2/3', 'Phase 3', 'Phase 4', 'Approved']
-
-    # Standardize phase values
-    phase_map = {
-        "Preclinical": "Preclinical",
-        "Phase 1": "Phase 1",
-        "Phase 2": "Phase 2", 
-        "Phase 3": "Phase 3",
-        "Phase 4": "Phase 4",
-        "Phase 1/Phase 2": "Phase 1/2",
-        "Phase 2/Phase 3": "Phase 2/3",
-        "Phase 1/2": "Phase 1/2",
-        "Phase 2/3": "Phase 2/3",
-        "Early Phase 1": "Phase 1",
-        "N/A": "Preclinical",
-        "Unknown": "Unknown",
-        "Approved": "Approved"
-    }
-
-    # Apply phase mapping
-    pipeline_data['phase'] = pipeline_data['phase'].map(lambda x: phase_map.get(str(x), "Unknown"))
-
     # Count drugs by phase
     phase_counts = pipeline_data['phase'].value_counts().reset_index()
     phase_counts.columns = ['Phase', 'Count']
 
-    # Ensure all phases are present in the data
-    for phase in phase_order:
-        if phase not in phase_counts['Phase'].values:
-            phase_counts = pd.concat([phase_counts, pd.DataFrame({'Phase': [phase], 'Count': [0]})], ignore_index=True)
+    # Define phase order
+    phase_order = ['Preclinical', 'Phase 1', 'Phase 1/2', 'Phase 2', 'Phase 2/3', 'Phase 3', 'Phase 4', 'Approved']
 
     # Filter and order phases
     phase_counts = phase_counts[phase_counts['Phase'].isin(phase_order)]
@@ -231,84 +206,4 @@ def create_sentiment_chart(news_data):
         margin=dict(l=20, r=20, t=40, b=20)
     )
 
-    return fig
-
-def create_recent_activity_timeline(activities):
-    """
-    Create a timeline visualization of recent activities.
-    
-    Args:
-        activities (list): List of activity dictionaries with 'date', 'type', and 'description'
-        
-    Returns:
-        plotly.graph_objects.Figure: Plotly figure object
-    """
-    if not activities:
-        return go.Figure()
-    
-    # Convert activities to DataFrame
-    df = pd.DataFrame(activities)
-    
-    # Create the timeline
-    fig = go.Figure()
-    
-    # Define colors for different activity types
-    colors = {
-        'Trial': '#3498DB',  # Blue
-        'News': '#2ECC71'    # Green
-    }
-    
-    # Add traces for each activity
-    for idx, activity in enumerate(activities):
-        fig.add_trace(go.Scatter(
-            x=[activity['date']],
-            y=[idx],  # Use index for vertical position
-            mode='markers',
-            marker=dict(
-                size=12,
-                color=colors.get(activity['type'], '#95A5A6'),
-                symbol='circle'
-            ),
-            name=activity['type'],
-            showlegend=False,
-            hoverinfo='text',
-            hovertext=f"{activity['type']}: {activity['description']}"
-        ))
-        
-        # Add text annotation for each activity
-        fig.add_annotation(
-            x=activity['date'],
-            y=idx,
-            text=f"<b>{activity['type']}</b>: {activity['description']}",
-            showarrow=False,
-            xanchor='left',
-            xshift=10,
-            align='left',
-            font=dict(size=11),
-            bgcolor='rgba(255, 255, 255, 0.8)',
-            bordercolor=colors.get(activity['type'], '#95A5A6'),
-            borderwidth=1,
-            borderpad=4
-        )
-    
-    # Update layout
-    fig.update_layout(
-        title='Recent Activity Timeline',
-        showlegend=False,
-        xaxis=dict(
-            title='Date',
-            showgrid=True,
-            gridcolor='rgba(0,0,0,0.1)'
-        ),
-        yaxis=dict(
-            showticklabels=False,
-            showgrid=False,
-            zeroline=False
-        ),
-        plot_bgcolor='white',
-        height=max(300, len(activities) * 50),  # Dynamic height based on number of activities
-        margin=dict(l=20, r=20, t=40, b=20),
-        hovermode='closest'
-    )
-    
     return fig

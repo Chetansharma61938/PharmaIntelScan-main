@@ -8,39 +8,15 @@ from sqlalchemy import create_engine, Column, Integer, String, Text, Float, Date
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 import datetime
-from urllib.parse import urlparse
 
 # Load environment variables from .env file
-load_dotenv(override=True)
+load_dotenv()
 
 # Get the database URL from environment variable or use a default SQLite URL
 DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///./pharmaintel.db')
 
-# Handle Render PostgreSQL URL
-if 'postgresql://' in DATABASE_URL:
-    # Ensure we're using the correct driver
-    if not 'psycopg2' in DATABASE_URL:
-        DATABASE_URL = DATABASE_URL.replace('postgresql://', 'postgresql+psycopg2://', 1)
-    
-    # Add SSL mode if not present
-    if 'sslmode' not in DATABASE_URL:
-        DATABASE_URL += '?sslmode=require'
-
-# Create the SQLAlchemy engine with connection pooling
-engine = create_engine(
-    DATABASE_URL,
-    pool_size=5,
-    max_overflow=10,
-    pool_timeout=30,
-    pool_recycle=1800,
-    connect_args={
-        'connect_timeout': 10,
-        'keepalives': 1,
-        'keepalives_idle': 30,
-        'keepalives_interval': 10,
-        'keepalives_count': 5
-    }
-)
+# Create the SQLAlchemy engine
+engine = create_engine(DATABASE_URL)
 
 # Create a base class for declarative models
 Base = declarative_base()

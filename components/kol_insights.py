@@ -127,6 +127,10 @@ def render_kol_insights():
             # Convert journal lists to strings
             display_df['Journals'] = display_df['Journals'].apply(lambda x: ', '.join(x[:2]) + ('...' if len(x) > 2 else ''))
             
+            # Reset index to start from 1
+            display_df = display_df.reset_index(drop=True)
+            display_df.index = display_df.index + 1
+            
             # Display the table
             st.dataframe(display_df, use_container_width=True)
     else:

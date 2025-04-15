@@ -1,233 +1,190 @@
 """
-News scraping module for the pharma CI platform.
-Fetches and processes news articles using AI or falls back to demo data.
+News scraper module for the pharma CI platform.
+Fetches and processes pharmaceutical news from various sources.
 """
-import os
-from datetime import datetime, timedelta
-from typing import List, Dict
 import requests
-from dotenv import load_dotenv
+import trafilatura
+import pandas as pd
+import time
+import os
+import hashlib
+from datetime import datetime, timedelta
+from utils.text_processing import summarize_text, analyze_sentiment
 
-load_dotenv()
+# Cache directory
+CACHE_DIR = ".cache"
+os.makedirs(CACHE_DIR, exist_ok=True)
 
-# Try to import Groq, but don't fail if not available
-try:
-    import groq
-    GROQ_AVAILABLE = True
-    # Initialize Groq client without proxies
-    groq_client = groq.Groq(
-        api_key=os.getenv("GROQ_API_KEY"),
-        http_client=None  # Let Groq handle its own HTTP client
-    )
-except ImportError:
-    GROQ_AVAILABLE = False
-    print("Groq package not available. Using demo data instead.")
-except Exception as e:
-    GROQ_AVAILABLE = False
-    print(f"Error initializing Groq client: {e}. Using demo data instead.")
+def generate_cache_key(params):
+    """Generate a cache key from the parameters"""
+    param_str = str(sorted(params.items()))
+    return hashlib.md5(param_str.encode()).hexdigest()
 
-def get_demo_articles(query: str = None, max_results: int = 10) -> List[Dict]:
+def get_news_articles(company_names=None, drug_names=None, max_results=20, refresh=False):
     """
-    Generate demo news articles when API is not available.
-    """
-    demo_articles = [
-        {
-            "title": "FDA Approves Breakthrough Cancer Treatment",
-            "source": "PharmaNews",
-            "date": (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"),
-            "url": "https://example.com/news/1",
-            "summary": "The FDA has approved a groundbreaking new cancer treatment that shows promising results in clinical trials.",
-            "sentiment": 0.8
-        },
-        {
-            "title": "Moderna Announces Success in Phase 3 Trial",
-            "source": "BioTechDaily",
-            "date": datetime.now().strftime("%Y-%m-%d"),
-            "url": "https://example.com/news/2",
-            "summary": "Moderna's latest vaccine candidate shows 95% efficacy in Phase 3 clinical trials.",
-            "sentiment": 0.9
-        },
-        {
-            "title": "Pfizer Expands Research into Rare Diseases",
-            "source": "HealthWire",
-            "date": (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d"),
-            "url": "https://example.com/news/3",
-            "summary": "Pfizer announces major investment in rare disease research program.",
-            "sentiment": 0.7
-        },
-        {
-            "title": "New Study Shows Promise for Alzheimer's Treatment",
-            "source": "MedicalDaily",
-            "date": (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d"),
-            "url": "https://example.com/news/4",
-            "summary": "Researchers report positive results from early trials of new Alzheimer's drug.",
-            "sentiment": 0.6
-        },
-        {
-            "title": "Johnson & Johnson Partners with Biotech Startup",
-            "source": "PharmaInsider",
-            "date": (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"),
-            "url": "https://example.com/news/5",
-            "summary": "Strategic partnership aims to accelerate drug development pipeline.",
-            "sentiment": 0.5
-        }
-    ]
-    
-    if query:
-        # Filter articles based on query
-        query_terms = query.lower().split(" OR ")
-        filtered_articles = [
-            article for article in demo_articles
-            if any(term.lower() in article["title"].lower() or term.lower() in article["summary"].lower()
-                  for term in query_terms)
-        ]
-        return filtered_articles[:max_results] if filtered_articles else demo_articles[:max_results]
-    
-    return demo_articles[:max_results]
-
-def get_news_articles(company_names: List[str] = None, drug_names: List[str] = None, max_results: int = 10) -> List[Dict]:
-    """
-    Fetch pharmaceutical news articles using Groq's AI API or return demo data if not available.
+    Fetch pharmaceutical news from news APIs and pharma news sites.
     
     Args:
-        company_names (List[str], optional): List of company names to search for
-        drug_names (List[str], optional): List of drug names to search for
+        company_names (list): List of company names to filter by
+        drug_names (list): List of drug names to filter by
         max_results (int): Maximum number of results to return
+        refresh (bool): Whether to refresh the cache
         
     Returns:
-        List[Dict]: List of news articles with metadata
+        list: List of dictionaries containing news articles
     """
+    # Build search query
+    query_terms = []
+    
+    if company_names:
+        query_terms.extend(company_names)
+        
+    if drug_names:
+        query_terms.extend(drug_names)
+    
+    # If no specific terms, use general pharma terms
+    if not query_terms:
+        query_terms = ["pharmaceutical", "drug approval", "clinical trial", "FDA"]
+    
+    # Create params for cache key
+    params = {
+        "terms": "+".join(query_terms),
+        "max_results": max_results
+    }
+    
+    # Generate cache key
+    cache_key = generate_cache_key(params)
+    cache_file = os.path.join(CACHE_DIR, f"news_{cache_key}.json")
+    
+    # Check if cached data exists and is fresh (less than 2 hours old for news)
+    if not refresh and os.path.exists(cache_file):
+        file_time = os.path.getmtime(cache_file)
+        if (time.time() - file_time) < 7200:  # 2 hours in seconds
+            try:
+                return pd.read_json(cache_file).to_dict('records')
+            except:
+                # If there's an error reading the cache, continue to fetch fresh data
+                pass
+    
+    articles = []
+    
     try:
-        # Prepare search query
-        search_terms = []
-        if company_names:
-            search_terms.extend(company_names)
-        if drug_names:
-            search_terms.extend(drug_names)
+        # Try to use the free News API (requires API key in production)
+        # For this MVP, let's use a simulated response that resembles the News API format
+        # In production, use: https://newsapi.org/v2/everything
         
-        # If no specific terms provided, use general pharma terms
-        if not search_terms:
-            search_terms = ["pharmaceutical industry", "drug development", "FDA approval", "clinical trials"]
+        news_sources = [
+            {
+                "name": "FiercePharma",
+                "url": "https://www.fiercepharma.com/pharma",
+                "domain": "fiercepharma.com"
+            },
+            {
+                "name": "BioSpace",
+                "url": "https://www.biospace.com/news/",
+                "domain": "biospace.com"
+            },
+            {
+                "name": "PharmaTimes",
+                "url": "https://www.pharmatimes.com/news",
+                "domain": "pharmatimes.com"
+            },
+            {
+                "name": "Endpoints News",
+                "url": "https://endpts.com/",
+                "domain": "endpts.com"
+            }
+        ]
         
-        query = " OR ".join(search_terms)
+        # Scrape a few recent pharmaceutical news websites
+        for source in news_sources[:2]:  # Limit to 2 sources for the MVP
+            try:
+                # Get HTML content
+                response = requests.get(source["url"])
+                if response.status_code == 200:
+                    # Extract text content
+                    html_content = response.text
+                    
+                    # Extract main content and URL from the page
+                    article_content = trafilatura.extract(html_content)
+                    article_url = response.url  # Use actual URL from response
+                    
+                    # If we got content, create an article entry
+                    if article_content:
+                        title = f"Latest Updates from {source['name']}"
+                        
+                        # We can also try to extract specific articles, but for MVP we'll use the main page content
+                        # In a production environment, we would parse the HTML to extract individual articles
+                        
+                        # Skip if no content
+                        if not article_content:
+                            continue
+                        
+                        # Create summary and sentiment
+                        summary = summarize_text(article_content)
+                        sentiment = analyze_sentiment(article_content)
+                        
+                        # Create article entry
+                        article = {
+                            "title": title,
+                            "source": source["name"],
+                            "url": article_url,
+                            "published_at": datetime.now().strftime('%Y-%m-%d'),
+                            "summary": summary,
+                            "sentiment": sentiment,
+                            "content": article_content[:500] + "..." if len(article_content) > 500 else article_content
+                        }
+                        
+                        articles.append(article)
+                        
+                        # Check if we have enough articles
+                        if len(articles) >= max_results:
+                            break
+            except Exception as e:
+                print(f"Error scraping {source['name']}: {e}")
+                continue
         
-        if not GROQ_AVAILABLE:
-            return get_demo_articles(query, max_results)
-        
-        # Use Groq to get news
-        response = groq_client.chat.completions.create(
-            model="mixtral-8x7b-32768",
-            messages=[
+        # If we didn't get enough articles, generate some mock data for the demo
+        if len(articles) == 0:
+            # Create a few example articles
+            sample_articles = [
                 {
-                    "role": "system",
-                    "content": """You are a pharmaceutical industry news expert. Find and summarize recent news articles.
-                    For each article provide:
-                    1. Title: Clear and concise title
-                    2. Source: Publication name
-                    3. Date: YYYY-MM-DD format
-                    4. URL: Full article URL
-                    5. Summary: 2-3 sentence summary
-                    6. Sentiment: Brief sentiment analysis (-1 to 1 scale)"""
+                    "title": "FDA Approves New Treatment for Rare Disease",
+                    "source": "FiercePharma",
+                    "url": "https://www.fiercepharma.com/example",
+                    "published_at": datetime.now().strftime('%Y-%m-%d'),
+                    "summary": "The FDA has approved a new therapy for a rare genetic disease, marking a significant milestone in treatment options.",
+                    "sentiment": "positive",
+                    "content": "The FDA has approved a new therapy for a rare genetic disease, marking a significant milestone in treatment options. The drug, developed over a decade, showed promising results in clinical trials."
                 },
                 {
-                    "role": "user",
-                    "content": f"Find {max_results} recent pharmaceutical industry news articles about: {query}. Focus on high-quality sources and important developments."
+                    "title": "Major Pharma Company Announces Phase 3 Results",
+                    "source": "BioSpace",
+                    "url": "https://www.biospace.com/example",
+                    "published_at": (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d'),
+                    "summary": "A leading pharmaceutical company reported positive Phase 3 trial results for its flagship oncology drug.",
+                    "sentiment": "positive",
+                    "content": "A leading pharmaceutical company reported positive Phase 3 trial results for its flagship oncology drug. The results exceeded expectations with a 40% improvement in progression-free survival."
                 }
-            ],
-            temperature=0.7,
-            max_tokens=4000
-        )
-        
-        # Process the response
-        articles = []
-        content = response.choices[0].message.content
-        article_blocks = content.split("\n\n")
-        
-        for block in article_blocks:
-            if not block.strip():
-                continue
+            ]
             
-            try:
-                lines = block.split("\n")
-                if len(lines) >= 6:  # Ensure we have all required fields
-                    article = {
-                        "title": lines[0].replace("Title: ", "").strip(),
-                        "source": lines[1].replace("Source: ", "").strip(),
-                        "date": lines[2].replace("Date: ", "").strip(),
-                        "url": lines[3].replace("URL: ", "").strip(),
-                        "summary": lines[4].replace("Summary: ", "").strip(),
-                        "sentiment": float(lines[5].replace("Sentiment: ", "").strip())
-                    }
-                    articles.append(article)
-            except Exception as e:
-                print(f"Error processing article block: {e}")
-                continue
+            articles.extend(sample_articles)
         
-        return articles[:max_results] if articles else get_demo_articles(query, max_results)
-        
-    except Exception as e:
-        print(f"Error fetching news articles: {e}")
-        return get_demo_articles(query, max_results)
-
-def get_company_news(company_name: str, max_results: int = 5) -> List[Dict]:
-    """
-    Get news articles for a specific company.
-    
-    Args:
-        company_name (str): Company name to search for
-        max_results (int): Maximum number of articles to return
-        
-    Returns:
-        List[Dict]: List of dictionaries containing article data
-    """
-    return get_news_articles(company_names=[company_name], max_results=max_results)
-
-def analyze_news_sentiment(articles: List[Dict]) -> List[Dict]:
-    """
-    Analyze sentiment of news articles using Groq's API.
-    """
-    try:
-        for article in articles:
-            try:
-                response = groq_client.chat.completions.create(
-                    model="mixtral-8x7b-32768",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are a sentiment analysis expert. Return only a number between -1 and 1 representing the sentiment score."
-                        },
-                        {
-                            "role": "user",
-                            "content": f"Analyze the sentiment of this pharmaceutical news text and return only a number: {article['content'][:500]}"
-                        }
-                    ],
-                    temperature=0.3,
-                    max_tokens=10
-                )
-                
-                sentiment_text = response.choices[0].message.content.strip()
-                try:
-                    sentiment_score = float(sentiment_text)
-                    article["sentiment"] = max(min(sentiment_score, 1.0), -1.0)  # Ensure within bounds
-                except:
-                    article["sentiment"] = 0.0
-                
-                # Add a small delay to avoid rate limits
-                time.sleep(0.5)
-                
-            except Exception as e:
-                print(f"Error analyzing article sentiment: {e}")
-                article["sentiment"] = 0.0
+        # Save to cache
+        pd.DataFrame(articles).to_json(cache_file)
         
         return articles
         
     except Exception as e:
-        print(f"Error in sentiment analysis: {e}")
-        # Add neutral sentiment if analysis fails
-        for article in articles:
-            if "sentiment" not in article:
-                article["sentiment"] = 0.0
-        return articles
+        print(f"Error fetching news data: {e}")
+        # If there was an error but we have cached data, use it regardless of age
+        if os.path.exists(cache_file):
+            try:
+                return pd.read_json(cache_file).to_dict('records')
+            except:
+                pass
+        
+        return []
 
 def get_kol_mentions(kol_name, max_results=10):
     """

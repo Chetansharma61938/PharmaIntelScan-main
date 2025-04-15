@@ -1,16 +1,10 @@
+
 import streamlit as st
 from components.dashboard import render_dashboard
 from components.competitor_pipeline import render_competitor_pipeline
 from components.news_monitor import render_news_monitor
 from components.kol_insights import render_kol_insights
 from utils.database import init_db, seed_database
-import time
-import sys
-import logging
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Set page configuration first
 st.set_page_config(
@@ -21,32 +15,12 @@ st.set_page_config(
 )
 
 # Initialize the database after page config
-max_retries = 5
-retry_delay = 10  # seconds
-
-def initialize_database():
-    for attempt in range(max_retries):
-        try:
-            logger.info(f"Attempting to connect to database (attempt {attempt + 1}/{max_retries})...")
-            init_db()
-            logger.info("Database connection established!")
-            
-            logger.info("Seeding database with initial data...")
-            seed_database()
-            logger.info("Database seeded successfully!")
-            return True
-            
-        except Exception as e:
-            if attempt < max_retries - 1:
-                logger.warning(f"Database initialization attempt {attempt + 1} failed: {str(e)}")
-                logger.info(f"Retrying in {retry_delay} seconds...")
-                time.sleep(retry_delay)
-            else:
-                logger.error(f"Failed to initialize database after {max_retries} attempts: {str(e)}")
-                return False
-
-# Initialize database silently
-db_initialized = initialize_database()
+try:
+    init_db()
+    seed_database()
+except Exception as e:
+    st.error(f"Error initializing database: {e}")
+    print(f"Error initializing database: {e}")
 
 # Add sidebar for navigation
 st.sidebar.title("Pharma CI Platform")
