@@ -16,16 +16,31 @@ load_dotenv(override=True)
 # Get the database URL from environment variable or use a default SQLite URL
 DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///./pharmaintel.db')
 
-# Ensure we're using the correct credentials
+# Handle Render PostgreSQL URL
 if 'postgresql://' in DATABASE_URL:
-    # Parse the URL to ensure we're using the correct username
-    url = urlparse(DATABASE_URL)
-    if url.username == 'user':
-        # Replace with correct username
-        DATABASE_URL = DATABASE_URL.replace('user:', 'pharma_user:')
+    # Ensure we're using the correct driver
+    if not 'psycopg2' in DATABASE_URL:
+        DATABASE_URL = DATABASE_URL.replace('postgresql://', 'postgresql+psycopg2://', 1)
+    
+    # Add SSL mode if not present
+    if 'sslmode' not in DATABASE_URL:
+        DATABASE_URL += '?sslmode=require'
 
-# Create the SQLAlchemy engine
-engine = create_engine(DATABASE_URL)
+# Create the SQLAlchemy engine with connection pooling
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=1800,
+    connect_args={
+        'connect_timeout': 10,
+        'keepalives': 1,
+        'keepalives_idle': 30,
+        'keepalives_interval': 10,
+        'keepalives_count': 5
+    }
+)
 
 # Create a base class for declarative models
 Base = declarative_base()
