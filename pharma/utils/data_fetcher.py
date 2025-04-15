@@ -6,10 +6,14 @@ import requests
 import pandas as pd
 from datetime import datetime, timedelta
 import logging
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Configure requests session
+session = requests.Session()
 
 def fetch_clinical_trials(company_name=None, days_back=30):
     """Fetch clinical trials data from clinicaltrials.gov"""
@@ -35,7 +39,7 @@ def fetch_clinical_trials(company_name=None, days_back=30):
             "fields": ",".join(fields)
         }
         
-        response = requests.get(base_url, params=params)
+        response = session.get(base_url, params=params)
         response.raise_for_status()
         
         data = response.json()
@@ -62,7 +66,7 @@ def fetch_fda_data(days_back=30):
             "search": f"effective_time:[{date_str} TO 99991231]"
         }
         
-        response = requests.get(base_url, params=params)
+        response = session.get(base_url, params=params)
         response.raise_for_status()
         
         data = response.json()

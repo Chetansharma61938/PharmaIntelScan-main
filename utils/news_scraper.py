@@ -14,10 +14,17 @@ load_dotenv()
 try:
     import groq
     GROQ_AVAILABLE = True
-    groq_client = groq.Groq(api_key=os.getenv("GROQ_API_KEY"))
+    # Initialize Groq client without proxies
+    groq_client = groq.Groq(
+        api_key=os.getenv("GROQ_API_KEY"),
+        http_client=None  # Let Groq handle its own HTTP client
+    )
 except ImportError:
     GROQ_AVAILABLE = False
     print("Groq package not available. Using demo data instead.")
+except Exception as e:
+    GROQ_AVAILABLE = False
+    print(f"Error initializing Groq client: {e}. Using demo data instead.")
 
 def get_demo_articles(query: str = None, max_results: int = 10) -> List[Dict]:
     """

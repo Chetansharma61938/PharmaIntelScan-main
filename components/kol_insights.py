@@ -175,29 +175,40 @@ def render_kol_insights():
             # Sort by publication count
             top_active_kols = sorted(kols, key=lambda x: x['publication_count'], reverse=True)[:10]
             
-            # Create data for horizontal bar chart
-            kol_names = [kol['name'].split()[-1] for kol in top_active_kols]  # Use last name for brevity
-            pub_counts = [kol['publication_count'] for kol in top_active_kols]
+            # Create data for horizontal bar chart with safe name handling
+            kol_names = []
+            pub_counts = []
             
-            # Create a simple horizontal bar chart using HTML
-            st.markdown("<h4>Most Active KOLs by Publication Count</h4>", unsafe_allow_html=True)
+            for kol in top_active_kols:
+                if 'name' in kol and kol['name']:
+                    # Safely split name and get last part, defaulting to full name if split fails
+                    name_parts = kol['name'].split()
+                    display_name = name_parts[-1] if len(name_parts) > 1 else kol['name']
+                    kol_names.append(display_name)
+                    pub_counts.append(kol['publication_count'])
             
-            max_count = max(pub_counts)
-            for i, (name, count) in enumerate(zip(kol_names, pub_counts)):
-                # Calculate percentage width
-                width_pct = int((count / max_count) * 100)
+            if kol_names:  # Only proceed if we have valid names
+                # Create a simple horizontal bar chart using HTML
+                st.markdown("<h4>Most Active KOLs by Publication Count</h4>", unsafe_allow_html=True)
                 
-                # Create bar
-                st.markdown(f"""
-                <div style="margin-bottom: 5px;">
-                    <div style="display: flex; align-items: center;">
-                        <div style="width: 100px; text-align: right; padding-right: 10px;">{name}</div>
-                        <div style="flex-grow: 1;">
-                            <div style="background-color: #2196f3; width: {width_pct}%; height: 20px; border-radius: 2px;"></div>
+                max_count = max(pub_counts)
+                for i, (name, count) in enumerate(zip(kol_names, pub_counts)):
+                    # Calculate percentage width
+                    width_pct = int((count / max_count) * 100)
+                    
+                    # Create bar
+                    st.markdown(f"""
+                    <div style="margin-bottom: 5px;">
+                        <div style="display: flex; align-items: center;">
+                            <div style="width: 100px; text-align: right; padding-right: 10px;">{name}</div>
+                            <div style="flex-grow: 1;">
+                                <div style="background-color: #2196f3; width: {width_pct}%; height: 20px; border-radius: 2px;"></div>
+                            </div>
+                            <div style="width: 50px; text-align: left; padding-left: 10px;">{count}</div>
                         </div>
-                        <div style="width: 50px; text-align: left; padding-left: 10px;">{count}</div>
                     </div>
-                </div>
-                """, unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
+            else:
+                st.warning("No valid KOL names found for trend analysis.")
     else:
         st.info("No KOL data available for trend analysis.")
